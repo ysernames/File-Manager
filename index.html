@@ -1,152 +1,122 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Cloud Notepad (GitHub)</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background: #f4f4f4;
-            padding: 20px;
-        }
-        textarea {
-            width: 100%;
-            height: 300px;
-            margin-top: 10px;
-            font-size: 14px;
-        }
-        input, button {
-            padding: 8px;
-            margin: 5px 0;
-            font-size: 14px;
-        }
-        .status {
-            margin-top: 10px;
-            font-weight: bold;
-        }
-        button {
-            cursor: pointer;
-        }
-    </style>
+<meta charset="UTF-8">
+<title>Cloud Notepad</title>
+<style>
+body { font-family: Arial; background: #f4f4f4; padding: 20px; }
+h2 { margin-bottom: 10px; }
+input, button, textarea { font-size: 14px; }
+input, button { padding: 8px; margin: 5px 0; }
+textarea { width: 100%; height: 300px; margin-top: 10px; }
+.status { margin-top: 10px; font-weight: bold; }
+button { cursor: pointer; }
+</style>
 </head>
 <body>
 
-<h2>📝 Cloud Notepad (GitHub Storage)</h2>
+<h2>📝 Cloud Notepad (GitHub)</h2>
 
 <label>File Name:</label><br>
 <input type="text" id="filename" placeholder="notes.txt"><br>
 
 <label>GitHub Token:</label><br>
-<input type="password" id="token" placeholder="GitHub PAT (90+ day expiry)"><br>
+<input type="password" id="token" placeholder="PAT with repo/public_repo scope"><br>
 
 <button onclick="loadFile()">Load File</button>
 <button onclick="saveFile()">Save File</button>
 <button onclick="clearText()">Clear Text</button>
 
 <textarea id="content" placeholder="Write your notes here..."></textarea>
-
 <div class="status" id="status"></div>
 
 <script>
-    const owner = "YOUR_GITHUB_USERNAME";
-    const repo = "YOUR_REPOSITORY_NAME";
-    const folder = "notes"; // folder in repo
+// ============ CONFIG =============
+const owner = "ysernames"; // replace with your GitHub username
+const repo = "File-Manager";        // replace with your repo name
+const token = "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";
+const folder = "main";                     // empty string = root of repo
 
-    let fileSha = null;
+let fileSha = null;
 
-    function setStatus(message, success = true) {
-        const status = document.getElementById("status");
-        status.textContent = message;
-        status.style.color = success ? "green" : "red";
+// ============ UTILS =============
+function setStatus(msg, success = true){
+    const status = document.getElementById("status");
+    status.textContent = msg;
+    status.style.color = success ? "green" : "red";
+}
+
+function getHeaders(token){
+    return {
+        "Authorization": `token ${token}`,
+        "Accept": "application/vnd.github.v3+json"
+    };
+}
+
+// ============ LOAD FILE ============
+async function loadFile(){
+    const filename = document.getElementById("filename").value.trim();
+    const token = document.getElementById("token").value.trim();
+    if(!filename || !token){ setStatus("File name and token required", false); return; }
+
+    const path = folder ? `${folder}/${filename}` : filename;
+    const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
+
+    try{
+        const res = await fetch(url, { headers: getHeaders(token) });
+        if(res.status === 404){ setStatus("File not found. You can create it by saving.", false); return; }
+        if(!res.ok) throw new Error("Failed to load file");
+
+        const data = await res.json();
+        document.getElementById("content").value = atob(data.content.replace(/\n/g,""));
+        fileSha = data.sha;
+        setStatus("File loaded successfully");
+    } catch(err){
+        setStatus("Error loading file: " + err.message, false);
     }
+}
 
-    function getHeaders(token) {
-        return {
-            "Authorization": `token ${token}`,
-            "Accept": "application/vnd.github.v3+json",
-            const token = ghp_11B2VRBCI0YpZgvsOTeLuL_a0s8KGxxjAk9z3ZqC7Dj7QXfN0R9QBsAIpu4B0fgujfS7M324REXLBwYtCV
-        };
-    }
+// ============ SAVE FILE ============
+async function saveFile(){
+    const filename = document.getElementById("filename").value.trim();
+    const token = document.getElementById("token").value.trim();
+    const content = document.getElementById("content").value;
+    if(!filename || !token){ setStatus("File name and token required", false); return; }
 
-    async function loadFile() {
-        const filename = document.getElementById("filename").value.trim();
-        const token = document.getElementById("token").value.trim();
+    const path = folder ? `${folder}/${filename}` : filename;
+    const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
 
-        if (!filename || !token) {
-            setStatus("File name and token are required.", false);
-            return;
+    const body = {
+        message: "Update via Cloud Notepad",
+        content: btoa(unescape(encodeURIComponent(content))),
+        sha: fileSha || undefined
+    };
+
+    try{
+        const res = await fetch(url, {
+            method: "PUT",
+            headers: { ...getHeaders(token), "Content-Type": "application/json" },
+            body: JSON.stringify(body)
+        });
+
+        if(!res.ok){
+            const errorData = await res.json();
+            throw new Error(errorData.message || "Failed to save file");
         }
 
-        const url = `https://api.github.com/repos/${owner}/${repo}/contents/${folder}/${filename}`;
-
-        try {
-            const res = await fetch(url, {
-                headers: getHeaders(token)
-            });
-
-            if (res.status === 404) {
-                setStatus("File not found.", false);
-                return;
-            }
-
-            if (!res.ok) throw new Error("Failed to load file");
-
-            const data = await res.json();
-            const decodedContent = atob(data.content.replace(/\n/g, ""));
-            document.getElementById("content").value = decodedContent;
-            fileSha = data.sha;
-
-            setStatus("File loaded successfully.");
-        } catch (err) {
-            setStatus("Error loading file: " + err.message, false);
-        }
+        const data = await res.json();
+        fileSha = data.content.sha;
+        setStatus("File saved successfully");
+    } catch(err){
+        setStatus("Error saving file: " + err.message, false);
     }
+}
 
-    async function saveFile() {
-        const filename = document.getElementById("filename").value.trim();
-        const token = document.getElementById("token").value.trim();
-        const content = document.getElementById("content").value;
-
-        if (!filename || !token) {
-            setStatus("File name and token are required.", false);
-            return;
-        }
-
-        const url = `https://api.github.com/repos/${owner}/${repo}/contents/${folder}/${filename}`;
-
-        const encodedContent = btoa(unescape(encodeURIComponent(content)));
-
-        const body = {
-            message: "Update via Cloud Notepad",
-            content: encodedContent,
-            sha: fileSha || undefined
-        };
-
-        try {
-            const res = await fetch(url, {
-                method: "PUT",
-                headers: {
-                    ...getHeaders(token),
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify(body)
-            });
-
-            if (!res.ok) throw new Error("Failed to save file");
-
-            const data = await res.json();
-            fileSha = data.content.sha;
-
-            setStatus("File saved successfully.");
-        } catch (err) {
-            setStatus("Error saving file: " + err.message, false);
-        }
-    }
-
-    function clearText() {
-        document.getElementById("content").value = "";
-        setStatus("Text cleared.");
-    }
+// ============ CLEAR TEXT ============
+function clearText(){
+    document.getElementById("content").value = "";
+    setStatus("Text cleared");
+}
 </script>
 
 </body>
